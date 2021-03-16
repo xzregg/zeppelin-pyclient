@@ -17,10 +17,15 @@ class ZeppelinClient(object):
     API_HOST = ''
     API_PATH = ''
 
-    def __init__(self, api_address: str, timeout=5):
+    def __init__(self, api_address: str, username, password, timeout=5):
         self.api_address = api_address.rstrip('/')
         self.timeout = timeout
         self.s = None
+        self.username = username
+        self.passowrd = password
+
+    def set_timeout(self, timeout):
+        self.timeout = timeout or self.timeout
 
     def generate_url(self, path: str):
         return self.api_address + path
@@ -28,7 +33,13 @@ class ZeppelinClient(object):
     def create_note(self, *names):
         note_name = '/'.join(names)
         path = '/api/notebook'
-        data = {"name": note_name}
+        data = {"name": note_name, 'defaultInterpreterGroup': 'flink'}
+        result = self.req('POST', path, json=data)
+        return result
+
+    def create_note_and_paragraphs(self, note_name, paragraphs_list):
+        path = '/api/notebook'
+        data = {"name": note_name, "defaultInterpreterGroup": "flink", "paragraphs": paragraphs_list}
         result = self.req('POST', path, json=data)
         return result
 
@@ -92,7 +103,7 @@ class ZeppelinClient(object):
         return result
 
     def get_paragraph_status(self, note_id, paragraph_id):
-        path = '/api/notebook/' + note_id + '/' + paragraph_id
+        path = '/api/notebook/job/' + note_id + '/' + paragraph_id
         result = self.req('GET', path)
         return result
 
@@ -118,15 +129,17 @@ class ZeppelinClient(object):
         result = self.req('POST', path, json=data)
         return result
 
-    def run_paragraph_async(self, name, note_id, paragraph_id, params={}):
+    def run_paragraph_sync(self, name, note_id, paragraph_id, params={}, timeout=None):
         path = '/api/notebook/run/' + note_id + '/' + paragraph_id
         data = dict(name=name)
+        self.set_timeout(timeout)
         if params:
             data['params'] = params
         result = self.req('POST', path, json=data)
+
         return result
 
-    def stop_paragraph_async(self, note_id, paragraph_id):
+    def stop_paragraph(self, note_id, paragraph_id):
         path = '/api/notebook/job/' + note_id + '/' + paragraph_id
         result = self.req('DELETE', path)
         return result
@@ -137,6 +150,13 @@ class ZeppelinClient(object):
 
         return result
 
+    def restart_interpreter(self, note_id, interpreter):
+
+        path = '/api/interpreter/setting/restart/%s' % interpreter
+        data = {"noteId": note_id}
+        result = self.req('PUT', path, json=data)
+        return result
+
     def req(self, method, path, **kwargs):
         self.s = self.s or requests.Session()
         url = self.generate_url(path)
@@ -144,7 +164,7 @@ class ZeppelinClient(object):
 
         result = rsp.json()
         if rsp.status_code != 200:
-            raise Exception('Unable to call rest api, status: %s, message: %s' % (rsp.status_code, rsp.content))
+            raise Exception('Unable to call %s [%s] rest api, status: %s, message: %s' % (url,method,rsp.status_code, rsp.content))
 
         return result
 
